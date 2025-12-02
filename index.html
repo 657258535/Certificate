@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式合格证设计器</title>
+    <!-- 引入Font Awesome图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 引入html2canvas用于下载功能 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* 全局样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "微软雅黑", sans-serif;
+            background-color: #f5f5f5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* 主容器：左右两栏布局 */
+        .app-container {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 左侧控制台 */
+        .control-panel {
+            width: 400px;
+            background: white;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+
+        .control-panel h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        /* 图片拖放区域 */
+        .drop-zone {
+            border: 2px dashed #ddd;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #fafafa;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: #4CAF50;
+            background: #f0f9f0;
+        }
+
+        .drop-zone i {
+            font-size: 24px;
+            color: #999;
+            margin-bottom: 10px;
+        }
+
+        .drop-zone p {
+            margin: 0;
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* 操作按钮 */
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+        }
+
+        .btn-secondary {
+            background: #666;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #555;
+        }
+
+        /* 右侧预览区 */
+        .preview-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .preview-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        .preview-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        /* 卡片容器 */
+        .card-container {
+            width: 720px;
+            height: 1080px;
+            perspective: 2400px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.2);
+        }
+
+        /* 卡片包装器 - 承载正反面 */
+        .card-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0,0,0,0.25);
+            border-radius: 0;
+        }
+
+        /* 卡片正反面通用样式 */
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            padding: 36px;
+            background: #fff;
+            border-radius: 0;
+            overflow: hidden;
+        }
+
+        /* 背面初始状态隐藏 */
+        .card-back {
+            display: none;
+            text-align: center;
+        }
+        
+        /* 翻转状态 - 使用display属性控制显示/隐藏 */
+        .card-container.flipped .card-front {
+            display: none;
+        }
+        
+        .card-container.flipped .card-back {
+            display: block;
+        }
+
+        /* 卡片孔位样式（正反面通用） */
+        .hole {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #dcdcdc;
+            position: absolute;
+            top: 36px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* ---------------- 正面样式（调整字体：缩小5倍后+取消加粗） ---------------- */
+        .card-front h1 {
+            text-align: center;
+            font-size: 48px; /* 缩小5倍后（原24px×2） */
+            font-weight: normal; /* 取消标题加粗 */
+            margin: 60px 0 36px;
+        }
+
+        .info-list {
+            font-size: 28px;
+            line-height: 2.0;
+        }
+
+        .info-list span:first-child {
+            display: inline-block;
+            width: 168px;
+            font-weight: normal; /* 取消标签加粗 */
+            color: #333; /* 标签文字颜色加深，提升辨识度 */
+            vertical-align: top; /* 顶部对齐 */
+        }
+        
+        .info-list span:last-child {
+            display: inline-block;
+            max-width: calc(100% - 168px);
+            word-wrap: break-word; /* 允许长单词换行 */
+            word-break: break-all; /* 强制换行 */
+            vertical-align: top; /* 顶部对齐 */
+        }
+
+        .line {
+            border-top: 2px dashed #999;
+            margin: 28.8px 0;
+        }
+
+        .wash-title {
+            font-size: 32px; /* 缩小5倍后（原16px×2） */
+            font-weight: normal; /* 取消洗涤标题加粗 */
+            margin: 19.2px 0;
+            color: #333;
+        }
+
+        .wash-icons {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin: 10px 0;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .wash-icons .icon-item {
+            width: 108px;
+            height: 60px;
+        }
+
+        .wash-icons .icon-item i {
+            font-size: 48px;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .wash-icons .icon-item p {
+            font-size: 24px; 
+            font-weight: normal; /* 确保图标文字不加粗 */
+        }
+
+        .wash-note {
+            font-size: 28px;
+            text-align: center;
+            margin-top: 50px;
+            color: #666;
+        }
+
+        .price {
+            font-size: 36px; /* 缩小5倍后（原18px×2） */
+            font-weight: 800; /* 取消价格加粗 */
+            margin-top: 36px;
+            /* color: #e63946; */
+            text-align: center;
+        }
+
+        /* ---------------- 背面样式（缩小5倍后） ---------------- */
+        .logo-icon {
+            width: 360px;
+            height: 360px;
+            margin: 72px auto 36px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .logo-icon svg {
+            font-size: 240px;
+            color: #333;
+            /* 取消图标斜体 */
+            font-style: normal;
+
+        }
+
+        .brand-en {
+            font-size: 76px;
+            font-weight: bold;
+            letter-spacing: 2.4px;
+            margin-bottom: 19.2px;
+        }
+
+        .slogan {
+            font-size: 32px;
+            margin-bottom: 60px;
+            color: #666;
+        }
+
+        .qr-section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 36px;
+            text-align: left;
+            padding: 0 24px;
+        }
+
+        .qr-code {
+            width: 256px;
+            height: 256px;
+            border: 2.4px solid #ccc;
+            background-color: #333;
+            flex-shrink: 0; /* 防止在flex布局中被压缩 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .qr-note {
+            font-size: 24px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .qr-code img {
+            width: 100%;
+            height: 100%;
+        }
+  
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧控制台 -->
+        <div class="control-panel">
+            <h2>合格证设计器</h2>
+            
+            <form id="certForm">
+                <!-- 基本信息 -->
+                <h3 style="margin: 20px 0 10px; color: #333; font-size: 16px;">基本信息</h3>
+                
+                <div class="form-group">
+                    <label for="brand">品 牌：</label>
+                    <input type="text" id="brand" name="brand" value="歌之维">
+                </div>
+                
+                <div class="form-group">
+                    <label for="productName">品 名：</label>
+                    <input type="text" id="productName" name="productName" value="内衣">
+                </div>
+                
+                <div class="form-group">
+                    <label for="grade">等 级：</label>
+                    <select id="grade" name="grade">
+                        <option value="一等品">一等品</option>
+                        <option value="合格品">合格品</option>
+                        <option value="优等品">优等品</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="inspector">质检员：</label>
+                    <input type="text" id="inspector" name="inspector" value="08">
+                </div>
+                
+                <div class="form-group">
+                    <label for="standard">执行标准：</label>
+                    <input type="text" id="standard" name="standard" value="FZ/T73012-2017">
+                </div>
+                
+                <div class="form-group">
+                    <label for="safetyClass">安全类别：</label>
+                    <input type="text" id="safetyClass" name="safetyClass" value="GB18401-2010 B类  (直接接触皮肤)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="material">成分面料：</label>
+                    <input type="text" id="material" name="material" value="见水洗标">
+                </div>
+                
+                <div class="form-group">
+                    <label for="origin">产 地：</label>
+                    <input type="text" id="origin" name="origin" value="广东汕头">
+                </div>
+                
+                <div class="form-group">
+                    <label for="price">统一零售价：</label>
+                    <input type="text" id="price" name="price" value="¥189元">
+                </div>
+                
+                <!-- 背面信息 -->
+                <h3 style="margin: 20px 0 10px; color: #333; font-size: 16px;">背面信息</h3>
+                
+                <div class="form-group">
+                    <label for="brandEn">品牌英文：</label>
+                    <input type="text" id="brandEn" name="brandEn" value="GE ZHI WEI">
+                </div>
+                
+                <div class="form-group">
+                    <label for="slogan">宣传标语：</label>
+                    <textarea id="slogan" name="slogan" rows="2">舒适为基,身享歌韵 | 多维守护,品质为核</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="qrNote">二维码说明：</label>
+                    <textarea id="qrNote" name="qrNote" rows="2">以亲肤舒适为歌，以多维守护为核
+为女性打造贴身、愉悦、可靠的内衣选择</textarea>
+                </div>
+                
+                <!-- 二维码图片 -->
+                <div class="form-group">
+                    <label>二维码图片：</label>
+                    <div class="drop-zone" id="qrDropZone">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p>拖放二维码图片到此处，或点击选择文件</p>
+                        <input type="file" id="qrImage" name="qrImage" accept="image/*" style="display: none;">
+                    </div>
+                </div>
+                
+                <!-- 操作按钮 -->
+                <div class="action-buttons">
+                    <button type="button" class="btn btn-primary" id="downloadBtn">
+                        <i class="fas fa-download"></i> 下载合格证
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="resetBtn">
+                        <i class="fas fa-redo"></i> 重置
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- 右侧预览区 -->
+        <div class="preview-panel">
+            <div class="preview-header">
+                <h2>预览效果</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" id="flipBtn">
+                        <i class="fas fa-exchange-alt"></i> 翻转卡片
+                    </button>
+                </div>
+            </div>
+            
+            <div class="preview-container">
+                <div class="card-container" id="cardContainer">
+                    <div class="card-wrapper">
+                        <!-- 卡片正面 -->
+                        <div class="card-front">
+                            <div class="hole"></div>
+                            <h1>合格证</h1>
+                            <div class="info-list">
+                                <p><span>品 牌：</span><span id="previewBrand">歌之维</span></p>
+                                <p><span>品 名：</span><span id="previewProductName">内衣</span></p>
+                                <p><span>等 级：</span><span id="previewGrade">一等品</span></p>
+                                <p><span>质检员：</span><span id="previewInspector">08</span></p>
+                                <p><span>执行标准：</span><span id="previewStandard">FZ/T73012-2017</span></p>
+                                <p><span>安全类别：</span><span id="previewSafetyClass">GB18401-2010 B类  (直接接触皮肤)</span></p>
+                                <p><span>成分面料：</span><span id="previewMaterial">见水洗标</span></p>
+                                <p><span>产 地：</span><span id="previewOrigin">广东汕头</span></p>
+                            </div>
+                            <div class="line"></div>
+                            <div class="wash-title">洗涤方法：</div>
+                            <div class="wash-icons">
+                                <div class="icon-item">
+                                    <i class="fas fa-tint" style="color: #333;"></i>
+                                    <p>30℃</p>
+                                </div>
+                                <div class="icon-item">
+                                    <i class="fas fa-ban" style="color: #333;"></i>
+                                    <p>不可漂白</p>
+                                </div>
+                                <div class="icon-item">
+                                    <i class="fas fa-tshirt" style="color: #333;"></i>
+                                    <p>悬挂晾干</p>
+                                </div>
+                                <div class="icon-item">
+                                    <i class="fas fa-temperature-low" style="color: #333;"></i>
+                                    <p>低温熨烫</p>
+                                </div>
+                                <div class="icon-item">
+                                    <i class="fas fa-ban" style="color: #333;"></i>
+                                    <p>不可干洗</p>
+                                </div>
+                            </div>
+                            <div class="wash-note">(深浅色分开浸泡洗涤)</div>
+                            <div class="price">统一零售价：<span id="previewPrice">¥189元</span></div>
+                        </div>
+
+                        <!-- 卡片背面 -->
+                        <div class="card-back">
+                            <div class="hole"></div>
+                            <div class="logo-icon" id="logoDropZone">
+                                <!-- Logo图片将显示在这里 -->
+                                <svg id="logoSvg" t="1764666597852" class="icon" viewBox="0 0 1555 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="13263" width="256" height="256"><path d="M718.157523 1024.455231c-140.126283 0-280.263182-0.677644-420.382388 0.540523-30.231226 0.264511-43.826564-9.714368-38.335526-39.765125 9.318044-50.981632-16.558039-90.460129-40.365803-131.179793-28.711393-49.107938-59.584876-97.019826-63.634815-156.888676-2.565492-37.963972 2.997202-73.685351 16.046709-108.614966 17.500193-46.855613 33.523902-94.484413 54.56182-139.752959 27.769238-59.746768 36.287556-121.24957 33.890148-186.486491-2.799925-75.967754-0.426402-152.117746-0.774955-228.182811-0.090235-18.865212 1.41279-33.108115 26.523647-33.095731 23.244241 0.012385 29.095332 11.804801 29.9791 31.516626 2.060355 45.947075 5.286683 91.848149 6.884365 137.806724 0.582986 16.851743 5.628158 30.43558 15.914896 43.856642C451.087162 360.164109 563.217736 507.493231 675.532317 654.690541c5.455651 7.149761 10.88034 14.425142 17.128639 20.853026 21.766872 22.390552 37.674691 22.469286 57.45198-2.072741 28.247835-35.05612 55.08465-71.251672 82.408023-107.045592C922.998781 447.891547 1013.319135 329.238431 1104.019005 210.87902c10.219504-13.337019 14.88693-27.28091 15.536265-44.109653 1.736573-44.957149 4.842587-89.857681 7.677898-134.759981 1.280092-20.24527 7.99018-33.566365 32.856874-31.859871 24.829538 1.706494 22.283509 18.070794 22.300317 33.980383 0.101735 101.093651 0.229125 202.185532-0.072541 303.278298-0.047771 17.308224 2.638033 33.596443 8.981875 49.738695 25.977817 66.109188 51.943249 132.236953 77.001913 198.707079 26.879278 71.288827 23.526445 141.056053-13.613031 208.36129-13.536066 24.530526-25.485066 50.188983-41.345114 73.127135-25.063971 36.245093-36.720151 75.018522-31.204343 118.677886 3.682808 29.136911-9.197731 38.108171-37.585341 37.903816-142.13179-1.020004-284.26358-0.468866-426.396254-0.468866z m289.984626-67.335316c25.160398 1.237629 49.948358-1.651646 74.587696-6.313764 9.70906-1.838308 23.052272-1.95862 21.531555-15.271754-1.784344-15.608807-15.055899-8.866871-24.019197-7.197532-72.856431 13.570567-143.118177 6.542889-211.30099-23.526445-101.687252-44.843029-203.724827-44.018533-305.50143 0.383939-66.049916 28.820205-134.376042 37.18194-205.453438 23.982042-9.011069-1.676416-24.134202-12.292245-27.106633 5.31676-2.48145 14.702038 12.832767 14.731231 23.491059 16.593425 68.391591 11.97377 135.998495 10.603443 200.149062-18.426424 109.864094-49.713925 218.550716-48.181707 327.868981 1.393327 39.673121 17.996483 81.986929 25.607148 125.753335 23.066426z" fill="" p-id="13264"></path></svg>
+                                <input type="file" id="logoImage" accept="image/*" style="display: none;">
+                            </div>
+                            <div class="brand-en" id="previewBrandEn">GE ZHI WEI</div>
+                            <div class="slogan" id="previewSlogan">舒适为基,身享歌韵 | 多维守护,品质为核</div>
+                            <div class="qr-section">
+                                <div class="qr-note" id="previewQrNote">
+                                    <p>以亲肤舒适为歌，以多维守护为核</p>
+                                    <p>为女性打造贴身、愉悦、可靠的内衣选择</p>
+                                </div>
+                                <div class="qr-code" id="previewQrCode">
+                                    <!-- 二维码图片将显示在这里 -->
+                                    <img src="qrcode.webp?r=" id="qrcodeImage" alt="二维码" crossOrigin="anonymous">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM元素
+        const cardContainer = document.getElementById('cardContainer');
+        const flipBtn = document.getElementById('flipBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const qrDropZone = document.getElementById('qrDropZone');
+        const qrImage = document.getElementById('qrImage');
+        const previewQrCode = document.getElementById('previewQrCode');
+        const qrcodeImage = document.getElementById('qrcodeImage');
+        const logoDropZone = document.getElementById('logoDropZone');
+        const logoImage = document.getElementById('logoImage');
+        const logoSvg = document.getElementById('logoSvg');
+        const form = document.getElementById('certForm');
+        
+        // 表单字段与预览元素的映射
+        const formFields = {
+            brand: 'previewBrand',
+            productName: 'previewProductName',
+            grade: 'previewGrade',
+            inspector: 'previewInspector',
+            standard: 'previewStandard',
+            safetyClass: 'previewSafetyClass',
+            material: 'previewMaterial',
+            origin: 'previewOrigin',
+            price: 'previewPrice',
+            brandEn: 'previewBrandEn',
+            slogan: 'previewSlogan',
+            qrNote: 'previewQrNote'
+        };
+        
+        // 保存数据到localStorage
+        function saveToLocalStorage() {
+            const formData = {};
+            
+            // 保存文本字段
+            Object.keys(formFields).forEach(fieldName => {
+                const field = document.getElementById(fieldName);
+                if (field) {
+                    formData[fieldName] = field.value;
+                }
+            });
+            
+            // 保存到localStorage
+            localStorage.setItem('certificateFormData', JSON.stringify(formData));
+        }
+        
+        // 从localStorage加载数据
+        function loadFromLocalStorage() {
+            const savedData = localStorage.getItem('certificateFormData');
+            if (savedData) {
+                try {
+                    const formData = JSON.parse(savedData);
+                    
+                    // 恢复文本字段
+                    Object.keys(formData).forEach(fieldName => {
+                        const field = document.getElementById(fieldName);
+                        if (field) {
+                            field.value = formData[fieldName];
+                        }
+                    });
+                    
+                    return true;
+                } catch (error) {
+                    console.error('加载缓存数据失败:', error);
+                    return false;
+                }
+            }
+            return false;
+        }
+        
+        // 实时预览功能
+        function updatePreview() {
+            // 更新文本内容
+            Object.keys(formFields).forEach(fieldName => {
+                const field = document.getElementById(fieldName);
+                const preview = document.getElementById(formFields[fieldName]);
+                
+                if (field && preview) {
+                    if (fieldName === 'qrNote') {
+                        // 处理多行文本
+                        const lines = field.value.split('\n');
+                        preview.innerHTML = lines.map(line => `<p>${line}</p>`).join('');
+                    } else {
+                        preview.textContent = field.value;
+                    }
+                }
+            });
+            
+            // 自动保存到localStorage
+            saveToLocalStorage();
+        }
+        
+        // 添加表单字段事件监听
+        Object.keys(formFields).forEach(fieldName => {
+            const field = document.getElementById(fieldName);
+            if (field) {
+                field.addEventListener('input', updatePreview);
+                field.addEventListener('change', updatePreview);
+            }
+        });
+        
+        // 监听页面卸载事件，确保数据被保存
+        window.addEventListener('beforeunload', saveToLocalStorage);
+        
+        // 翻转卡片功能
+        function toggleCard() {
+            const cardFront = document.querySelector('.card-front');
+            const cardBack = document.querySelector('.card-back');
+            
+            // 切换翻转状态类
+            const isFlipped = cardContainer.classList.toggle('flipped');
+            
+            // 直接控制显示/隐藏，确保与翻转状态一致
+            if (isFlipped) {
+                cardFront.style.display = 'none';
+                cardBack.style.display = 'block';
+            } else {
+                cardFront.style.display = 'block';
+                cardBack.style.display = 'none';
+            }
+        }
+        
+        // 图片拖放功能
+        function setupDropZone() {
+            // 二维码拖放设置
+            setupImageDropZone(qrDropZone, qrImage, (file) => handleQrFile(file));
+            
+            // Logo拖放设置
+            setupImageDropZone(logoDropZone, logoImage, (file) => handleLogoFile(file));
+        }
+        
+        // 通用图片拖放设置函数
+        function setupImageDropZone(dropZone, inputElement, fileHandler) {
+            // 点击上传
+            dropZone.addEventListener('click', () => inputElement.click());
+            
+            // 拖放事件
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('drag-over');
+            });
+            
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('drag-over');
+            });
+            
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                
+                if (e.dataTransfer.files.length > 0) {
+                    fileHandler(e.dataTransfer.files[0]);
+                }
+            });
+            
+            // 文件选择事件
+            inputElement.addEventListener('change', () => {
+                if (inputElement.files.length > 0) {
+                    fileHandler(inputElement.files[0]);
+                }
+            });
+        }
+        
+        // 处理上传的二维码文件
+        function handleQrFile(file) {
+            if (file.type.match('image.*')) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.objectFit = 'contain';
+                    img.crossOrigin = 'anonymous'; // 添加CORS支持
+                    
+                    // 清除现有内容
+                    previewQrCode.innerHTML = '';
+                    previewQrCode.appendChild(img);
+                };
+                
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // 处理上传的Logo文件
+        function handleLogoFile(file) {
+            if (file.type.match('image.*')) {
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    // 检查是否已存在logo图片
+                    const existingLogoImg = logoDropZone.querySelector('img');
+                    if (existingLogoImg) {
+                        existingLogoImg.remove();
+                    }
+                    
+                    // 隐藏SVG
+                    logoSvg.style.display = 'none';
+                    
+                    // 创建新的图片元素
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.objectFit = 'contain';
+                    img.crossOrigin = 'anonymous'; // 添加CORS支持
+                    
+                    // 添加到logoDropZone
+                    logoDropZone.appendChild(img);
+                };
+                
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // 下载功能
+        async function downloadCertificate() {
+            try {
+                // 禁用下载按钮，防止重复点击
+                downloadBtn.disabled = true;
+                downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 处理中...';
+                
+                // 保存当前翻转状态
+                const wasOriginallyFlipped = cardContainer.classList.contains('flipped');
+                
+                // 步骤1：临时移除可能导致CORS问题的图片
+                const qrImage = previewQrCode.querySelector('img');
+                let originalImageSrc = null;
+                let usePlaceholder = false;
+                
+                if (qrImage && (qrImage.src.includes('http') || qrImage.src.includes('blob:'))) {
+                    // 如果是网络图片或blob图片，可能会有CORS问题
+                    originalImageSrc = qrImage.src;
+                    qrImage.style.display = 'none';
+                    usePlaceholder = true;
+                    
+                    // 添加临时占位符
+                    const placeholder = document.createElement('div');
+                    placeholder.style.width = '100%';
+                    placeholder.style.height = '100%';
+                    placeholder.style.backgroundColor = '#f0f0f0';
+                    placeholder.style.display = 'flex';
+                    placeholder.style.justifyContent = 'center';
+                    placeholder.style.alignItems = 'center';
+                    placeholder.style.color = '#666';
+                    placeholder.style.fontSize = '24px';
+                    placeholder.textContent = '二维码';
+                    placeholder.id = 'qrPlaceholder';
+                    previewQrCode.appendChild(placeholder);
+                }
+                
+                // 获取正面和背面元素的引用
+                const cardFront = document.querySelector('.card-front');
+                const cardBack = document.querySelector('.card-back');
+                
+                // 步骤2：下载正面（合格证参数页）
+                // 确保正面可见，背面隐藏
+                cardFront.style.display = 'block';
+                cardBack.style.display = 'none';
+                await new Promise(resolve => setTimeout(resolve, 300)); // 确保渲染完成
+                
+                const frontCanvas = await html2canvas(cardContainer, {
+                    scale: 2, // 提高分辨率
+                    useCORS: true, // 允许跨域图片
+                    logging: false,
+                    allowTaint: true, // 允许污染的画布
+                    backgroundColor: null // 保持背景透明
+                });
+                
+                const frontLink = document.createElement('a');
+                frontLink.download = '合格证.png'; // 正面始终命名为合格证.png
+                frontLink.href = frontCanvas.toDataURL('image/png');
+                frontLink.click();
+                
+                // 步骤3：下载背面
+                // 确保背面可见，正面隐藏
+                cardFront.style.display = 'none';
+                cardBack.style.display = 'block';
+                await new Promise(resolve => setTimeout(resolve, 300)); // 确保渲染完成
+                
+                const backCanvas = await html2canvas(cardContainer, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    allowTaint: true,
+                    backgroundColor: null
+                });
+                
+                const backLink = document.createElement('a');
+                backLink.download = '合格证_背面.png'; // 背面始终命名为合格证_背面.png
+                backLink.href = backCanvas.toDataURL('image/png');
+                backLink.click();
+                
+                // 步骤4：恢复原始状态
+                await new Promise(resolve => setTimeout(resolve, 200));
+                if (wasOriginallyFlipped) {
+                    // 恢复为翻转状态
+                    cardFront.style.display = 'none';
+                    cardBack.style.display = 'block';
+                    cardContainer.classList.add('flipped');
+                } else {
+                    // 恢复为原始状态
+                    cardFront.style.display = 'block';
+                    cardBack.style.display = 'none';
+                    cardContainer.classList.remove('flipped');
+                }
+                
+                // 恢复原始图片
+                if (usePlaceholder && qrImage) {
+                    const placeholder = document.getElementById('qrPlaceholder');
+                    if (placeholder) {
+                        previewQrCode.removeChild(placeholder);
+                    }
+                    qrImage.style.display = 'block';
+                }
+                
+                // 恢复下载按钮状态
+                setTimeout(() => {
+                    downloadBtn.disabled = false;
+                    downloadBtn.innerHTML = '<i class="fas fa-download"></i> 下载合格证';
+                }, 500);
+                
+            } catch (error) {
+                console.error('下载失败:', error);
+                alert('下载失败: ' + error.message + '\n建议：请尝试使用本地图片或确保图片支持CORS');
+                
+                // 恢复下载按钮状态
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = '<i class="fas fa-download"></i> 下载合格证';
+            }
+        }
+        
+        // 重置功能
+        function resetForm() {
+            form.reset();
+            updatePreview();
+            
+            // 重置二维码图片（添加随机参数防止缓存）
+            previewQrCode.innerHTML = `<img src="qrcode.webp?r=${Math.random()}" id="qrcodeImage" alt="二维码" crossOrigin="anonymous">`;
+            
+            // 重置Logo（显示SVG，移除图片）
+            const existingLogoImg = logoDropZone.querySelector('img');
+            if (existingLogoImg) {
+                existingLogoImg.remove();
+            }
+            logoSvg.style.display = 'block';
+            
+            // 清除localStorage缓存
+            localStorage.removeItem('certificateFormData');
+        }
+        
+        // 事件监听器
+        flipBtn.addEventListener('click', toggleCard);
+        downloadBtn.addEventListener('click', downloadCertificate);
+        resetBtn.addEventListener('click', resetForm);
+        
+        // 初始化
+        setupDropZone();
+        
+        // 尝试从localStorage加载数据
+        const hasLoadedData = loadFromLocalStorage();
+        
+        // 如果没有缓存数据，使用默认值更新预览
+        updatePreview();
+        
+        // 防止二维码图片缓存
+        if (qrcodeImage) {
+            qrcodeImage.src = 'qrcode.webp?r=' + Math.random();
+        }
+    </script>
+</body>
+</html>
